@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
+const {getDataForAdminRole, getDataForEditorRole} = require("./services/roleBasedAccess")
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,65 +39,59 @@ app.get('/fetch-data/:id', async (req, res) => {
   }
 });
 
-app.get('/get-role-based-data/:role', async(req,res) => {
-    var JSONData;
+app.get('/get-role-based-data/:role', async (req, res) => {
     console.log("Role", req.params.role);
-    const data = fs.readFile(filePath, 'utf-8', (err, data) => {
-        if(err) {
-            console.log(`Error reading data from ${filePath}`);
-        } else {
-            JSONData = data;
-        }
-    })
-    result = JSON.parse(JSONData);
-    if (req.params.role == "Admin") {
-        console.log("File Path", filePath)
-        result.map(data => 
-            {
-                console.log("Role", data.access_control.Admin)
-                const adminAccessKeys = data.access_control.Admin || [];
-                    
-                // Filter the keys based on admin access
-                const filtereData = Object.keys(data)
-                    .filter(key => adminAccessKeys.includes(key))
-                    .reduce((obj, key) => {
-                    obj[key] = data[key];
-                    return obj;
-                    }, 
-                {});
-                    res.json(filtereData);
-                })
-    } else if (req.params.role == "Editor") 
-    {
-        result.map(data => {
-            console.log("Role", data.access_control.Editor)
-            const adminAccessKeys = data.access_control.Editor || [];
-            
-            // Filter the keys based on admin access
-            const filtereData = Object.keys(data)
-                .filter(key => adminAccessKeys.includes(key))
-                .reduce((obj, key) => {
-                obj[key] = data[key];
-                return obj;
-                }, {});
-                    res.json(filtereData);
-                })
-    }
-})
 
-// PUT endpoint to update a todo's completion status
-app.put('/update-data/:role', (req, res) => {
-    const updateId = parseInt(req.params.role);
-    const UpdateData = req.body;
-  
-    const index = data.findIndex((updateId) => updateId.role === role);
-    if (index !== -1) {
-        updateId[index] = { ...updateId[index], ...UpdateData };
-      res.json(updateId[index]);
-    } else {
-      res.status(404).json({ error: 'Todo not found' });
+    try {
+        const result = await getDataFromJsonFile(filePath);
+
+        if (req.params.role === "Admin") {
+            console.log("Role =====", req.params.role);
+            const getDataForAdmin = getDataForAdminRole(result);
+            res.json(getDataForAdmin);
+        } else if (req.params.role == "Editor") {
+            console.log("Role =====", req.params.role);
+            const getDataForEditor = getDataForEditorRole(result);
+            res.json(getDataForEditor);
+
+        } else {
+            res.json({ message: `Role is not ${req.params.role}. Access denied.` });
+        }
+    } catch (err) {
+        console.log("Error in fetching the role-based data ", err);
+        res.status(500).json({ error: "Internal Server Error" });
     }
-  });
+});
+
+
+async function getDataFromJsonFile(filePath) {
+    try {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        return JSON.parse(data);
+    } catch (err) {
+        console.log(`Error in reading data from ${filePath}: ${err.message}`);
+        throw err; // Rethrow the error if needed
+    }
+}
+
+
+
+app.put('/update-data', async (req, res) => {
+    console.log("Update req ", req.body);
+    const result = await getDataFromJsonFile(filePath);
+    const Accessrole = parseInt(req.params.role);
+    const UpdateData = req.body;
+    if(req.body.role == "Admin") {
+        const index = result.findIndex((role) => role === Accessrole);
+        console.log("Index ===", index)
+        if (index !== -1) {
+            result[index] = { ...result[index], ...UpdateData };
+            res.json(result[index]);
+        } else {
+            res.status(404).json({ error: 'Data not found' });
+        }
+    }
+});
 
 
 app.listen(PORT, () => {
